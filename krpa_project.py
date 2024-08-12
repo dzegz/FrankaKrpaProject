@@ -23,13 +23,26 @@ def main():
     time.sleep(1)
     g = PandaGripper(robot=r, namespace='pingvin')
 
-    # going to initial position
+    # going to the initial position
     q_home= np.array([0, -0.2, 0, -1.5, 0, 1.5, 0.7854]) # home joint configuration
     r.JMove(q_home, 10)
-    r.CMoveFor([0,0.11,0], 5)
 
     # go out of the camera frame
- 
+    pose = np.array([
+        [ 0.97199178,  0.12902535, -0.19642922,  0.06418075],
+        [ 0.23329223, -0.63073377,  0.74010111,  0.31493582],
+        [-0.02840274, -0.7651976 , -0.64316865,  0.47720053],
+        [ 0.        ,  0.        ,  0.        ,  1.        ]
+    ])
+    r.CMove(pose, 10)
+
+    # at this moment you should take a picture and run the pddl planning procedure
+    time.sleep(3)
+
+    # going back to the initial position
+    r.JMove(q_home, 10)
+    #going to the center of the coordinate system
+    r.CMoveFor([0,0.11,0], 5)
 
     # gripper homing
     g.homing()
