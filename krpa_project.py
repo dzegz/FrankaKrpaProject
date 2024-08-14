@@ -25,7 +25,7 @@ import re
 #                           PROCEDURE SCRIPTS
 ###############################################################################################
 
-def grip_handler(current_point, parsed_action):
+def grip_handler(r, g, current_point, parsed_action):
     # position before movement
     #translation_target0, orientation_target0 = self._target.get_world_pose()
     
@@ -48,14 +48,13 @@ def grip_handler(current_point, parsed_action):
 
     #yield from self.close_gripper_franka(self._articulation)
     print(f"Going to {parsed_action['parameters'][1]} - {current_point}")
-    r.CMoveFor([0, current_point[1], 0], 10)
-    time.sleep(1)
-    r.CMoveFor([current_point[0], 0, 0], 10)
-    time.sleep(1)
-    r.CMoveFor([0,0,-0.03], 3)
+    r.CMove([current_point[0], current_point[1], 0.05], 15)
+    #time.sleep(1)
+    r.CMove([current_point[0], current_point[1], 0.02], 5)
+    #time.sleep(1)
     g.close()
 
-def p2p_handler(current_point, target_point_id, parsed_action):
+def p2p_handler(r, g, current_point, target_point_id, parsed_action):
     print(f"Going from {parsed_action['parameters'][1]} to {parsed_action['parameters'][2]} - {current_point}")
     
     target_points = get_world_coords()
@@ -65,7 +64,7 @@ def p2p_handler(current_point, target_point_id, parsed_action):
 
     print("Going up middle: ", middle_point)
     #self._target.set_world_pose(middle_point, orientation_target)
-    r.CMoveFor(middle_point, 10)
+    r.CMove(middle_point, 10)
 
     # success = yield from self.goto_position(
     #     middle_point, orientation_target, self._articulation, self._rmpflow, timeout=250
@@ -76,16 +75,17 @@ def p2p_handler(current_point, target_point_id, parsed_action):
     target_points = get_world_coords()
 
     final_point = target_points[target_point_id]
-    final_point[2] = -0.15
     print("Going to destination", final_point)
     #self._target.set_world_pose(final_point, orientation_target)
-    r.CMoveFor(final_point, 10)
+    r.CMove([final_point[0], final_point[1], 0.05], 15)
+    r.CMove([final_point[0], final_point[1], 0.03], 5)
+    #time.sleep(1)
 
     # success = yield from self.goto_position(
     #     final_point, orientation_target, self._articulation, self._rmpflow, timeout=2500     
     # )
 
-def understanding_script(result):
+def understanding_script(r, g, result):
     plan_str = str(result.plan)
     actions = plan_str.split('\n')  
     parsed_actions = []
@@ -109,7 +109,7 @@ def understanding_script(result):
     
     for parsed_action in parsed_actions:
         #refreshing the positions
-        time.sleep(0.5)
+        #time.sleep(0.5)
         target_points = get_world_coords()
 
 
@@ -119,22 +119,22 @@ def understanding_script(result):
             if parameters == ['g', 'p1']:
                 print("Grip action with parameters g, p1")
                 current_point = target_points[0]
-                grip_handler(current_point, parsed_action)
+                grip_handler(r, g, current_point, parsed_action)
                 
             elif parameters == ['g', 'p3']:
                 print("Grip action with parameters g, p3")
                 current_point = target_points[2]
-                grip_handler(current_point, parsed_action)
+                grip_handler(r, g, current_point, parsed_action)
 
         elif action_name == "p2p":
             if parameters == ['g', 'p1', 'p2']:
                 print("p2p action with parameters g, p1, p2")
                 current_point = target_points[0]
-                p2p_handler(current_point, 1, parsed_action)
+                p2p_handler(r, g, current_point, 1, parsed_action)
             elif parameters == ['g', 'p3', 'p4']:
                 print("p2p action with parameters g, p3, p4")
                 current_point = target_points[2]
-                p2p_handler(current_point, 3, parsed_action)
+                p2p_handler(r, g, current_point, 3, parsed_action)
 
         elif action_name == "release":
             if parameters == ['g', 'p1']:
@@ -149,7 +149,7 @@ def understanding_script(result):
                 #time.sleep(0.5)
 
             # go up after releasing
-            r.CMoveFor([0, 0, 0.1], 7)
+            r.CMoveFor([0, 0, 0.15], 7)
             #translation_target, orientation_target = self._target.get_world_pose()
             #self._target.set_world_pose(translation_target+np.array([0, 0, 0.1]), orientation_target)
 
@@ -191,6 +191,13 @@ def main():
     q_home= np.array([0, -0.2, 0, -1.5, 0, 1.5, 0.7854]) # home joint configuration
     r.JMove(q_home, 10)
 
+    robot_points = get_world_coords()
+    result = planning_script()
+
+    g.homing()
+    g.open()
+    understanding_script(r, g, result)
+
     # # go out of the camera frame
     # pose = np.array([
     #     [ 0.97199178,  0.12902535, -0.19642922,  0.06418075],
@@ -206,7 +213,7 @@ def main():
     # # going back to the initial position
     # r.JMove(q_home, 10)
     # #going to the center of the coordinate system
-    # r.CMoveFor([0,0.11,0], 5)
+    # r.CMove([0.505,0.115,0.4], 10) # center of the camera system
 
     # # gripper homing
     # g.homing()
@@ -238,7 +245,8 @@ def transform_points_to_robot_coords(points):
     
     # Apply the transformation to each point
     transformed_points = np.array([(y, x, z) for x, y, z in points])
-    
+    transformed_points = transformed_points + np.array([0.505, 0.115, 0])
+
     return transformed_points
 
 def sort_cloth_corners(points):
@@ -351,26 +359,24 @@ def get_world_coords():
     print("p3: ", corners_world[0])
     print("p4: ", corners_world[3])
     print("----------------------------------- sorted points")
-    sorted_points = sort_cloth_corners(corners_world)
+    sorted_points = sort_cloth_corners(corners_world)/1000
     print("p1: ", sorted_points[0])
     print("p2: ", sorted_points[1])
     print("p3: ", sorted_points[2])
     print("p4: ", sorted_points[3])
     print("----------------------------------- robot coords")
-    robot_points = transform_points_to_robot_coords(sorted_points)
+    robot_points = transform_points_to_robot_coords(sorted_points)   
+
     print("p1: ", robot_points[0])
     print("p2: ", robot_points[1])
     print("p3: ", robot_points[2])
     print("p4: ", robot_points[3])
 
-    return robot_points/1000
+    return robot_points
 
 ######################################################################################
 
 if __name__ == "__main__":
-    robot_points = get_world_coords()
-    result = planning_script()
-    understanding_script(result)
-    #main()
+    main()
 
 #planning_script()
